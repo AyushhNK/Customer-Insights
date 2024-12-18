@@ -5,48 +5,50 @@ from .models import Customer, Product, Transaction
 from .serializers import CustomerSerializer
 from django.utils import timezone  # Import timezone from Django
 
+
 class CustomerListView(APIView):
     def get(self, request, *args, **kwargs):
-        # Fetch all customers
         customers = Customer.objects.all()
         serializer = CustomerSerializer(customers, many=True)
+        return Response(serializer.data)
 
-        # Aggregate product usage
+from django.db.models import Count
+from .models import Transaction
+
+class ProductUsageView(APIView):
+    def get(self, request, *args, **kwargs):
         product_usage = (
             Transaction.objects.values('product__name')
             .annotate(count=Count('product'))
             .order_by('-count')
         )
         product_aggregation = {item['product__name']: item['count'] for item in product_usage}
+        return Response(product_aggregation)
+from django.utils import timezone
+from django.db.models import Count, Avg
+from .models import Customer, Transaction
 
-        # Calculate Basic Insights
-        total_customers = Customer.objects.count()
-
-        # Get today's date and calculate current and last week's date ranges
-        today = timezone.now()  # Use timezone-aware current date
+class CustomerInsightsView(APIView):
+    def get(self, request, *args, **kwargs):
+        today = timezone.now()
         
         # Current week range (Monday to Sunday)
-        current_week_start = today - timezone.timedelta(days=today.weekday())  # Start of current week (Monday)
-        current_week_end = current_week_start + timezone.timedelta(days=6)  # End of current week (Sunday)
+        current_week_start = today - timezone.timedelta(days=today.weekday())
+        current_week_end = current_week_start + timezone.timedelta(days=6)
 
         # Last week range (Monday to Sunday)
-        last_week_start = current_week_start - timezone.timedelta(days=7)  # Start of last week (Monday)
-        last_week_end = last_week_start + timezone.timedelta(days=6)  # End of last week (Sunday)
-
-        print(current_week_start, current_week_end)
-        print(last_week_start, last_week_end)
+        last_week_start = current_week_start - timezone.timedelta(days=7)
+        last_week_end = last_week_start + timezone.timedelta(days=6)
 
         # Count customers for the current and previous weeks
         current_week_customers = Customer.objects.filter(signup_date__range=(current_week_start, current_week_end)).count()
         last_week_customers = Customer.objects.filter(signup_date__range=(last_week_start, last_week_end)).count()
 
-        print(current_week_customers, last_week_customers)
-
         # Calculate WoW Change
         if last_week_customers > 0:
             wow_change = ((current_week_customers - last_week_customers) / last_week_customers) * 100
         else:
-            wow_change = float('inf')  # Infinite increase if there were no customers last week
+            wow_change = float('inf')
 
         # Calculate average revenue for this week and last week
         avg_revenue_this_week = Transaction.objects.filter(
@@ -57,7 +59,20 @@ class CustomerListView(APIView):
             transaction_date__range=(last_week_start, last_week_end)
         ).aggregate(avg_revenue=Avg('amount'))['avg_revenue'] or 0
 
-        # Prepare Trends
+        response_data = {
+            "wow_change": wow_change,
+            "average_revenue": {
+                "current": avg_revenue_this_week,
+                "last_week": avg_revenue_last_week,
+            },
+            "current_week_customers": current_week_customers,
+            "last_week_customers": last_week_customers,
+        }
+        
+        return Response(response_data)
+class RevenueTrendsView(APIView):
+    def get(self, request, *args, **kwargs):
+        # Trends for customer count
         customer_count_trend = list(
             Customer.objects.extra({'day': "DATE(signup_date)"})
             .values('day')
@@ -65,6 +80,7 @@ class CustomerListView(APIView):
             .order_by('day')
         )
 
+        # Trends for revenue
         revenue_trend = list(
             Transaction.objects.extra({'day': "DATE(transaction_date)"})
             .values('day')
@@ -72,21 +88,9 @@ class CustomerListView(APIView):
             .order_by('day')
         )
 
-        # Construct Response
         response_data = {
-            "customers": serializer.data,
-            "aggregation": {
-                "product_usage": product_aggregation,
-                "wow_change": wow_change,
-                "average_revenue": {
-                    "current": avg_revenue_this_week,
-                    "last_week": avg_revenue_last_week,
-                },
-            },
-            "trends": {
-                "customer_count": customer_count_trend,
-                "revenue_trend": revenue_trend,
-            },
+            "customer_count_trend": customer_count_trend,
+            "revenue_trend": revenue_trend,
         }
         
         return Response(response_data)
