@@ -9,7 +9,12 @@ class Customer(models.Model):
     address = models.TextField()
     date_of_birth = models.DateField()
     signup_date = models.DateTimeField(auto_now_add=True)
-    segment = models.CharField(max_length=50, choices=[('High', 'High Value'), ('Low', 'Low Value'), ('Barely', 'Barely Active')])
+    segment = models.CharField(max_length=50, choices=[
+        ('High', 'High Value'), 
+        ('Low', 'Low Value'), 
+        ('Barely', 'Barely Active')
+    ])
+    profile_image = models.ImageField(upload_to='customer_images/', default='customer_images/default.jpg', null=True, blank=True)
 
     def __str__(self):
         return self.name

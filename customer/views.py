@@ -3,14 +3,14 @@ from rest_framework.response import Response
 from django.db.models import Count, Avg
 from .models import Customer, Product, Transaction
 from .serializers import CustomerSerializer
-from datetime import datetime
+from django.utils import timezone  # Import timezone from Django
 
 class CustomerListView(APIView):
     def get(self, request, *args, **kwargs):
         # Fetch all customers
         customers = Customer.objects.all()
         serializer = CustomerSerializer(customers, many=True)
-        
+
         # Aggregate product usage
         product_usage = (
             Transaction.objects.values('product__name')
@@ -21,18 +21,40 @@ class CustomerListView(APIView):
 
         # Calculate Basic Insights
         total_customers = Customer.objects.count()
-        last_week_customers = (
-            Customer.objects.filter(signup_date__week=(datetime.now().isocalendar()[1] - 1)).count()
-        )
-        print(last_week_customers)
-        wow_change = ((total_customers - last_week_customers) / last_week_customers) * 100 if last_week_customers > 0 else 0
 
+        # Get today's date and calculate current and last week's date ranges
+        today = timezone.now()  # Use timezone-aware current date
+        
+        # Current week range (Monday to Sunday)
+        current_week_start = today - timezone.timedelta(days=today.weekday())  # Start of current week (Monday)
+        current_week_end = current_week_start + timezone.timedelta(days=6)  # End of current week (Sunday)
+
+        # Last week range (Monday to Sunday)
+        last_week_start = current_week_start - timezone.timedelta(days=7)  # Start of last week (Monday)
+        last_week_end = last_week_start + timezone.timedelta(days=6)  # End of last week (Sunday)
+
+        print(current_week_start, current_week_end)
+        print(last_week_start, last_week_end)
+
+        # Count customers for the current and previous weeks
+        current_week_customers = Customer.objects.filter(signup_date__range=(current_week_start, current_week_end)).count()
+        last_week_customers = Customer.objects.filter(signup_date__range=(last_week_start, last_week_end)).count()
+
+        print(current_week_customers, last_week_customers)
+
+        # Calculate WoW Change
+        if last_week_customers > 0:
+            wow_change = ((current_week_customers - last_week_customers) / last_week_customers) * 100
+        else:
+            wow_change = float('inf')  # Infinite increase if there were no customers last week
+
+        # Calculate average revenue for this week and last week
         avg_revenue_this_week = Transaction.objects.filter(
-            transaction_date__week=datetime.now().isocalendar()[1]
+            transaction_date__range=(current_week_start, current_week_end)
         ).aggregate(avg_revenue=Avg('amount'))['avg_revenue'] or 0
 
         avg_revenue_last_week = Transaction.objects.filter(
-            transaction_date__week=(datetime.now().isocalendar()[1] - 1)
+            transaction_date__range=(last_week_start, last_week_end)
         ).aggregate(avg_revenue=Avg('amount'))['avg_revenue'] or 0
 
         # Prepare Trends
@@ -50,7 +72,7 @@ class CustomerListView(APIView):
             .order_by('day')
         )
 
-        # Step Construct Response
+        # Construct Response
         response_data = {
             "customers": serializer.data,
             "aggregation": {
