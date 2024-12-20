@@ -93,48 +93,56 @@ class RevenueTrendsView(APIView):
         return Response(response_data)
 
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from .models import Customer, Transaction
-from .serializers import CustomerProfileSerializer
-
-class CustomerProfileView(APIView):
+class CustomerPersonalInfoView(APIView):
     def get(self, request, customer_id, *args, **kwargs):
         try:
-            # Fetch Customer Data
             customer = Customer.objects.get(customer_id=customer_id)
-
-            # Personal Info (from model directly)
             personal_info = {
                 "name": customer.name,
                 "email": customer.email,
                 "phone_number": customer.phone_number,
                 "address": customer.address,
             }
+            return Response(personal_info)
+        except Customer.DoesNotExist:
+            return Response({"error": "Customer not found"}, status=404)
+        
+class ServicesUsedView(APIView):
+    def get(self, request, customer_id, *args, **kwargs):
+        # Mocked data; replace with actual database/API calls as needed
+        services_used = {
+            "mobile_banking": {
+                "since": "2020-01-01",
+                "expiry_date": "2025-01-01",
+                "active_devices": 2,
+            },
+            "loans": [
+                {"type": "Home Loan", "amount": 50000, "due_date": "2024-06-01"}
+            ],
+            "deposits": {"fixed": 10000, "savings": 5000},
+        }
+        return Response(services_used)
 
-            # Fetch Services Used (mocked or from database/API)
-            services_used = {
-                "mobile_banking": {
-                    "since": "2020-01-01",
-                    "expiry_date": "2025-01-01",
-                    "active_devices": 2,
-                },
-                "loans": [
-                    {"type": "Home Loan", "amount": 50000, "due_date": "2024-06-01"}
-                ],
-                "deposits": {"fixed": 10000, "savings": 5000},
-            }
+class RecommendedServiceView(APIView):
+    def get(self, request, customer_id, *args, **kwargs):
+        recommended_service = "Loan Against Fixed Deposit"  # Mocked data
+        return Response({"recommended_service": recommended_service})
 
-            # Fetch Recommended Service (mocked or call an API)
-            recommended_service = "Loan Against Fixed Deposit"
+class ChurnProbabilityView(APIView):
+    def get(self, request, customer_id, *args, **kwargs):
+        churn_probability = {"value": 0.7, "graph": [0.6, 0.65, 0.7]}  # Mocked data
+        return Response(churn_probability)
 
-            # Fetch Churn Probability (mocked or call an API)
-            churn_probability = {"value": 0.7, "graph": [0.6, 0.65, 0.7]}
+class CLVView(APIView):
+    def get(self, request, customer_id, *args, **kwargs):
+        clv = 1500.00  # Mocked data
+        return Response({"clv": clv})
 
-            # Fetch CLV (mocked or call an API)
-            clv = 1500.00
 
-            # Fetch Transaction History
+class TransactionHistoryView(APIView):
+    def get(self, request, customer_id, *args, **kwargs):
+        try:
+            customer = Customer.objects.get(customer_id=customer_id)
             transactions = Transaction.objects.filter(customer=customer)
             transaction_data = [
                 {
@@ -145,30 +153,28 @@ class CustomerProfileView(APIView):
                 }
                 for t in transactions
             ]
-
-            # Fetch Customer Product Risk (mocked or call an API)
-            customer_product_risk = {
-                "Mobile Banking": 0.2,
-                "Loans": 0.8,
-                "Deposits": 0.1,
-            }
-
-            # Fetch Customer Segmentation
-            segmentation = customer.segment
-
-            # Response Data
-            response_data = {
-                "personal_info": personal_info,
-                "services_used": services_used,
-                "recommended_service": recommended_service,
-                "churn_probability": churn_probability,
-                "clv": clv,
-                "transaction_history": transaction_data,
-                "customer_product_risk": customer_product_risk,
-                "segmentation": segmentation,
-            }
-
-            return Response(response_data)
-
+            return Response(transaction_data)
         except Customer.DoesNotExist:
             return Response({"error": "Customer not found"}, status=404)
+
+
+class CustomerProductRiskView(APIView):
+    def get(self, request, customer_id, *args, **kwargs):
+        # Mocked data; replace with actual calculations or database/API calls as needed
+        customer_product_risk = {
+            "Mobile Banking": 0.2,
+            "Loans": 0.8,
+            "Deposits": 0.1,
+        }
+        return Response(customer_product_risk)
+
+
+class CustomerSegmentationView(APIView):
+    def get(self, request, customer_id, *args, **kwargs):
+        try:
+            customer = Customer.objects.get(customer_id=customer_id)
+            segmentation = customer.segment
+            return Response({"segmentation": segmentation})
+        except Customer.DoesNotExist:
+            return Response({"error": "Customer not found"}, status=404)
+
