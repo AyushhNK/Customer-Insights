@@ -39,7 +39,7 @@ class CustomerInsightsView(APIView):
         current_week_customers = Customer.objects.filter(signup_date__range=(current_week_start, current_week_end)).count()
         last_week_customers = Customer.objects.filter(signup_date__range=(last_week_start, last_week_end)).count()
 
-        # Calculate WoW Change
+        # Calculate WoW Change for customers
         if last_week_customers > 0:
             wow_change = ((current_week_customers - last_week_customers) / last_week_customers) * 100
         else:
@@ -54,11 +54,18 @@ class CustomerInsightsView(APIView):
             transaction_date__range=(last_week_start, last_week_end)
         ).aggregate(avg_revenue=Avg('amount'))['avg_revenue'] or 0
 
+        # Calculate percentage change in revenue
+        if avg_revenue_last_week > 0:
+            revenue_change_percentage = ((avg_revenue_this_week - avg_revenue_last_week) / avg_revenue_last_week) * 100
+        else:
+            revenue_change_percentage = float('inf')  # Handle case where last week's revenue is zero
+
         response_data = {
             "wow_change": wow_change,
             "average_revenue": {
                 "current": avg_revenue_this_week,
                 "last_week": avg_revenue_last_week,
+                "revenue_change_percentage": revenue_change_percentage,
             },
             "current_week_customers": current_week_customers,
             "last_week_customers": last_week_customers,

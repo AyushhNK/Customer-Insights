@@ -1,14 +1,10 @@
 from rest_framework import serializers
-from .models import Customer
+from .models import Customer,Transaction, Product
 
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = ['customer_id', 'name', 'email', 'phone_number', 'segment', 'signup_date','profile_image']
-
-
-from rest_framework import serializers
-from .models import Customer, Transaction, Product
 
 class MobileBankingSerializer(serializers.Serializer):
     since = serializers.DateField()
@@ -62,5 +58,4 @@ class CustomerProfileSerializer(serializers.Serializer):
         }
 
     def get_churn_probability(self, obj):
-        # Example: Call churn probability API
         return {"value": 0.75, "graph": [0.6, 0.65, 0.75]}
