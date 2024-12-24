@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, date
 from django.db.models import Q
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
 
+
+
 class CustomerListView(APIView):
     def get(self, request):
         # Get query parameters
@@ -17,18 +19,37 @@ class CustomerListView(APIView):
         date_to = request.query_params.get('date_to')
         min_spent = request.query_params.get('min_spent')
         has_anomalies = request.query_params.get('has_anomalies')
-        
+        period = request.query_params.get('period', 'all')  # Default to 'all'
+
         # Base queryset with annotations
         customers = Customer.objects.annotate(
             total_transactions=Count('transactions'),
             total_spent=Sum('transactions__amount'),
             last_transaction_date=Max('transactions__transaction_date')
         )
-        
-        # Apply filters
+
+        # Apply filters based on segment
         if segment:
             customers = customers.filter(segment=segment)
-            
+
+        # Apply filters based on the specified period
+        if period != 'all':
+            today = timezone.now()
+            if period == 'day':
+                start_date = today - timedelta(days=1)
+                end_date = today
+            elif period == 'week':
+                start_date = today - timedelta(days=today.weekday())  # Start of the week (Monday)
+                end_date = start_date + timedelta(days=6)  # End of the week (Sunday)
+            elif period == 'month':
+                start_date = today.replace(day=1)  # Start of the month
+                end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)  # End of the month
+            else:
+                return Response({"error": "Invalid period specified"}, status=status.HTTP_400_BAD_REQUEST)
+
+            customers = customers.filter(signup_date=[start_date, end_date])
+
+        # Apply filters based on transaction dates
         if date_from and date_to:
             try:
                 date_from = datetime.strptime(date_from, '%Y-%m-%d')
@@ -36,21 +57,38 @@ class CustomerListView(APIView):
                 customers = customers.filter(transactions__transaction_date__range=[date_from, date_to])
             except ValueError:
                 return Response({"error": "Invalid date format"}, status=status.HTTP_400_BAD_REQUEST)
-                
+
+        # Apply filters based on minimum spent amount
         if min_spent:
             try:
                 customers = customers.filter(total_spent__gte=float(min_spent))
             except ValueError:
                 return Response({"error": "Invalid amount"}, status=status.HTTP_400_BAD_REQUEST)
-                
-        if has_anomalies:
+
+        # Filter customers with anomalies in transactions
+        if has_anomalies is not None:  # Check for presence of the parameter
             customers = customers.filter(transactions__is_anomalous=True).distinct()
-        
+
+        # Serialize customer data
         serializer = CustomerSerializer(customers, many=True)
-        
+
+        # Prepare analytics data
+        analytics = {
+            'total_customers': customers.count(),
+            'segment_distribution': dict(customers.values_list('segment').annotate(count=Count('segment'))),
+            'average_customer_value': customers.aggregate(avg=Avg('total_spent'))['avg'],
+            'customer_acquisition_trend': dict(
+                customers.values('signup_date__month')
+                .annotate(count=Count('customer_id'))
+                .order_by('signup_date__month')
+            )
+        }
+
         return Response({
+            'analytics': analytics,
             'customers': serializer.data
         })
+
 
 
 class ProductUsageView(APIView):
@@ -63,53 +101,68 @@ class ProductUsageView(APIView):
         product_aggregation = {item['product__name']: item['count'] for item in product_usage}
         return Response(product_aggregation)
 
-
 class CustomerInsightsView(APIView):
     def get(self, request, *args, **kwargs):
         today = timezone.now()
+        period = request.query_params.get('period', 'week')  # Default to 'week'
 
-        # Current week range (Monday to Sunday)
-        current_week_start = today - timezone.timedelta(days=today.weekday())
-        current_week_end = current_week_start + timezone.timedelta(days=6)
+        if period == 'day':
+            start_date = today - timedelta(days=1)
+            end_date = today
+        elif period == 'week':
+            start_date = today - timedelta(days=today.weekday())
+            end_date = start_date + timedelta(days=6)
+        elif period == 'month':
+            start_date = today.replace(day=1)
+            end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        else:
+            return Response({"error": "Invalid period specified"}, status=400)
 
-        # Last week range (Monday to Sunday)
-        last_week_start = current_week_start - timezone.timedelta(days=7)
-        last_week_end = last_week_start + timezone.timedelta(days=6)
+        # Last period range
+        if period == 'day':
+            last_period_start = start_date - timedelta(days=1)
+            last_period_end = start_date
+        elif period == 'week':
+            last_period_start = start_date - timedelta(days=7)
+            last_period_end = last_period_start + timedelta(days=6)
+        elif period == 'month':
+            last_period_start = (start_date - timedelta(days=1)).replace(day=1)
+            last_period_end = start_date - timedelta(days=1)
 
-        # Count customers for the current and previous weeks
-        current_week_customers = Customer.objects.filter(signup_date__range=(current_week_start, current_week_end)).count()
-        last_week_customers = Customer.objects.filter(signup_date__range=(last_week_start, last_week_end)).count()
+        # Count customers for the current and previous periods
+        current_period_customers = Customer.objects.filter(signup_date__range=(start_date, end_date)).count()
+        last_period_customers = Customer.objects.filter(signup_date__range=(last_period_start, last_period_end)).count()
 
         # Calculate WoW Change for customers
-        if last_week_customers > 0:
-            wow_change = ((current_week_customers - last_week_customers) / last_week_customers) * 100
+        if last_period_customers > 0:
+            wow_change = ((current_period_customers - last_period_customers) / last_period_customers) * 100
         else:
             wow_change = None  # Use None instead of float('inf')
 
-        # Calculate average revenue for this week and last week
-        avg_revenue_this_week = Transaction.objects.filter(
-            transaction_date__range=(current_week_start, current_week_end)
+        # Calculate average revenue for this period and last period
+        avg_revenue_this_period = Transaction.objects.filter(
+            transaction_date__range=(start_date, end_date)
         ).aggregate(avg_revenue=Avg('amount'))['avg_revenue'] or 0
 
-        avg_revenue_last_week = Transaction.objects.filter(
-            transaction_date__range=(last_week_start, last_week_end)
+        avg_revenue_last_period = Transaction.objects.filter(
+            transaction_date__range=(last_period_start, last_period_end)
         ).aggregate(avg_revenue=Avg('amount'))['avg_revenue'] or 0
 
         # Calculate percentage change in revenue
-        if avg_revenue_last_week > 0:
-            revenue_change_percentage = ((avg_revenue_this_week - avg_revenue_last_week) / avg_revenue_last_week) * 100
+        if avg_revenue_last_period > 0:
+            revenue_change_percentage = ((avg_revenue_this_period - avg_revenue_last_period) / avg_revenue_last_period) * 100
         else:
             revenue_change_percentage = None  # Use None instead of float('inf')
 
         response_data = {
             "wow_change": wow_change,
             "average_revenue": {
-                "current": avg_revenue_this_week,
-                "last_week": avg_revenue_last_week,
+                "current": avg_revenue_this_period,
+                "last_period": avg_revenue_last_period,
                 "revenue_change_percentage": revenue_change_percentage,
             },
-            "current_week_customers": current_week_customers,
-            "last_week_customers": last_week_customers,
+            "current_period_customers": current_period_customers,
+            "last_period_customers": last_period_customers,
         }
 
         return Response(response_data)
@@ -392,7 +445,7 @@ class CustomerProductRiskView(APIView):
     def get(self, request, customer_id, *args, **kwargs):
         # Mocked data; replace with actual calculations or database/API calls as needed
         customer_product_risk = {
-            "Mobile Banking": 0.2,
+            "MobileBanking": 0.2,
             "Loans": 0.8,
             "Deposits": 0.1,
         }
