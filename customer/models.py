@@ -21,6 +21,7 @@ class Customer(models.Model):
 
 class Product(models.Model):
     product_id = models.AutoField(primary_key=True)
+    customer= models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='products')
     name = models.CharField(max_length=100)
     description = models.TextField()
     category = models.CharField(max_length=50, choices=[('Loan', 'Loan'), ('Deposit', 'Deposit'), ('Banking', 'Mobile Banking')])

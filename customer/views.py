@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from django.db.models import Count, Avg, Sum, Max
 from .models import Customer, Product, Transaction
 from .serializers import CustomerSerializer
-from django.utils import timezone  # Import timezone from Django
+from django.utils import timezone 
 from rest_framework import status 
 from datetime import datetime, timedelta, date
 from django.db.models import Q
@@ -19,6 +19,7 @@ class CustomerListView(APIView):
         min_spent = request.query_params.get('min_spent')
         has_anomalies = request.query_params.get('has_anomalies')
         period = request.query_params.get('period', 'all')  # Default to 'all'
+        customer_name = request.query_params.get('customer_name')
 
         # Base queryset with annotations
         customers = Customer.objects.annotate(
@@ -68,6 +69,9 @@ class CustomerListView(APIView):
         if has_anomalies is not None:  # Check for presence of the parameter
             customers = customers.filter(transactions__is_anomalous=True).distinct()
 
+        if customer_name:
+            customers = customers.filter(name__icontains=customer_name)
+
         # Serialize customer data
         serializer = CustomerSerializer(customers, many=True)
 
@@ -87,7 +91,6 @@ class CustomerListView(APIView):
             'analytics': analytics,
             'customers': serializer.data
         })
-
 
 class ProductUsageView(APIView):
     def get(self, request, *args, **kwargs):
@@ -354,10 +357,6 @@ class ChurnProbabilityView(APIView):
         churn_probability = {"value": 0.7, "graph": [0.6, 0.65, 0.7]}  # Mocked data
         return Response(churn_probability)
 
-class CLVView(APIView):
-    def get(self, request, customer_id, *args, **kwargs):
-        clv = 1500.00  # Mocked data
-        return Response({"clv": clv})
 
 
 class TransactionHistoryView(APIView):
@@ -367,6 +366,8 @@ class TransactionHistoryView(APIView):
             period = request.query_params.get('period', 'all')  # Default to all
             custom_start = request.query_params.get('start_date')
             custom_end = request.query_params.get('end_date')
+            amount= request.query_params.get('amount')
+            anomalous = request.query_params.get('anomalous')
             
             # Get customer
             customer = Customer.objects.get(customer_id=customer_id)
@@ -408,6 +409,21 @@ class TransactionHistoryView(APIView):
                         {"error": "Invalid date format. Use YYYY-MM-DD"},
                         status=400
                     )
+            
+            if amount:
+                try:
+                    transactions = transactions.filter(amount__gte=float(amount))
+                except ValueError:
+                    return Response(
+                        {"error": "Invalid amount format. Use a number."},
+                        status=400
+                    )
+            
+            if anomalous:
+                if anomalous.lower() == 'true':
+                    transactions = transactions.filter(is_anomalous=True)
+                elif anomalous.lower() == 'false':
+                    transactions = transactions.filter(is_anomalous=False)
             
             # Calculate summary statistics
             summary = {
