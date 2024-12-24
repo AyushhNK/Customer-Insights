@@ -8,8 +8,7 @@ from rest_framework import status
 from datetime import datetime, timedelta, date
 from django.db.models import Q
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
-
-
+from dateutil import parser  # Import dateutil for parsing ISO 8601 dates
 
 class CustomerListView(APIView):
     def get(self, request):
@@ -32,7 +31,7 @@ class CustomerListView(APIView):
         if segment:
             customers = customers.filter(segment=segment)
 
-        # Apply filters based on the specified period
+        # Apply filters based on the specified period for signup_date
         if period != 'all':
             today = timezone.now()
             if period == 'day':
@@ -47,25 +46,25 @@ class CustomerListView(APIView):
             else:
                 return Response({"error": "Invalid period specified"}, status=status.HTTP_400_BAD_REQUEST)
 
-            customers = customers.filter(signup_date=[start_date, end_date])
+            customers = customers.filter(signup_date__range=[start_date, end_date])
 
-        # Apply filters based on transaction dates
+        # Apply filters based on transaction dates if provided
         if date_from and date_to:
             try:
-                date_from = datetime.strptime(date_from, '%Y-%m-%d')
-                date_to = datetime.strptime(date_to, '%Y-%m-%d')
+                date_from = parser.isoparse(date_from)  # Parse ISO 8601 date format
+                date_to = parser.isoparse(date_to)
                 customers = customers.filter(transactions__transaction_date__range=[date_from, date_to])
             except ValueError:
                 return Response({"error": "Invalid date format"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Apply filters based on minimum spent amount
+        # Apply filters based on minimum spent amount if provided
         if min_spent:
             try:
                 customers = customers.filter(total_spent__gte=float(min_spent))
             except ValueError:
                 return Response({"error": "Invalid amount"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Filter customers with anomalies in transactions
+        # Filter customers with anomalies in transactions if specified
         if has_anomalies is not None:  # Check for presence of the parameter
             customers = customers.filter(transactions__is_anomalous=True).distinct()
 
@@ -88,7 +87,6 @@ class CustomerListView(APIView):
             'analytics': analytics,
             'customers': serializer.data
         })
-
 
 
 class ProductUsageView(APIView):
