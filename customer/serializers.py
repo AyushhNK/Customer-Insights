@@ -6,6 +6,12 @@ class CustomerSerializer(serializers.ModelSerializer):
         model = Customer
         fields = ['customer_id', 'name', 'email', 'phone_number', 'segment', 'signup_date','profile_image']
 
+
+class ProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['product_id', 'name', 'description', 'category', 'risk_factor']
+
 class MobileBankingSerializer(serializers.Serializer):
     since = serializers.DateField()
     expiry_date = serializers.DateField()

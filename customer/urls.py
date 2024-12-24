@@ -11,11 +11,15 @@ from .views import (
     TransactionHistoryView,
     CustomerProductRiskView,
     CustomerSegmentationView,
+    CustomerByProductView,
+    ProductListView
 )
 
 urlpatterns = [
     path('customers/', CustomerListView.as_view(), name='customer-list'),
+    path('customers/<int:customer_id>/products/', ProductListView.as_view(), name='customer-products'),
     path('products/usage/', ProductUsageView.as_view(), name='product-usage'),
+    path('products/<str:product_name>/customers/', CustomerByProductView.as_view(), name='customers-by-product'),
     path('customers/insights/', CustomerInsightsView.as_view(), name='customer-insights'),
     path('revenue/trends/', RevenueTrendsView.as_view(), name='revenue-trends'),
     path('customer/<int:customer_id>/personal_info/', CustomerPersonalInfoView.as_view(), name='customer_personal_info'),

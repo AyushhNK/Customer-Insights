@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Count, Avg, Sum, Max
 from .models import Customer, Product, Transaction
-from .serializers import CustomerSerializer
+from .serializers import CustomerSerializer,ProductSerializer
 from django.utils import timezone 
 from rest_framework import status 
 from datetime import datetime, timedelta, date
@@ -101,6 +101,36 @@ class ProductUsageView(APIView):
         )
         product_aggregation = {item['product__name']: item['count'] for item in product_usage}
         return Response(product_aggregation)
+
+class ProductListView(APIView):
+    def get(self, request, customer_id):
+        try:
+            # Retrieve the customer by ID
+            customer = Customer.objects.get(customer_id=customer_id)
+        except Customer.DoesNotExist:
+            return Response({"error": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Retrieve products associated with the customer
+        products = customer.products.all()  # Using related_name from ForeignKey
+
+        # Serialize the product data
+        serializer = ProductSerializer(products, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class CustomerByProductView(APIView):
+    def get(self, request, product_name):
+        # Retrieve customers associated with the given product name
+        customers = Customer.objects.filter(products__name__iexact=product_name)
+
+        # Check if any customers were found
+        if not customers.exists():
+            return Response({"error": "No customers found for this product."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Serialize the customer data
+        serializer = CustomerSerializer(customers, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class CustomerInsightsView(APIView):
     def get(self, request, *args, **kwargs):
@@ -356,8 +386,6 @@ class ChurnProbabilityView(APIView):
     def get(self, request, customer_id, *args, **kwargs):
         churn_probability = {"value": 0.7, "graph": [0.6, 0.65, 0.7]}  # Mocked data
         return Response(churn_probability)
-
-
 
 class TransactionHistoryView(APIView):
     def get(self, request, customer_id, *args, **kwargs):
